@@ -17,6 +17,7 @@ vi.mock("@/models", () => ({
     getUserPermissions: vi.fn(),
   },
 }));
+
 // Mock the better-auth module
 vi.mock("./better-auth", () => ({
   auth: {
@@ -47,21 +48,7 @@ type ApiKey = Awaited<ReturnType<typeof betterAuth.api.verifyApiKey>>["key"];
 describe("hasPermission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUserModel.getById.mockResolvedValue({
-      id: "user1",
-      name: "Test User",
-      email: "user1@test.com",
-      emailVerified: true,
-      image: null,
-      role: null,
-      banned: null,
-      banReason: null,
-      banExpires: null,
-      twoFactorEnabled: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      organizationId: "org-1",
-    });
+    mockUserModel.getById.mockResolvedValue(makeUserWithOrganization());
     mockUserModel.getUserPermissions.mockResolvedValue({
       agent: ["read", "create", "update", "delete", "admin"],
       mcpServerInstallation: ["admin"],
@@ -166,6 +153,12 @@ describe("hasPermission", () => {
           metadata: null,
         }),
       });
+      mockUserModel.getById.mockResolvedValue(
+        makeUserWithOrganization({
+          id: "user-limited",
+          email: "user-limited@test.com",
+        }),
+      );
       mockUserModel.getUserPermissions.mockResolvedValue({
         agent: ["read"],
       });
@@ -204,6 +197,35 @@ describe("hasPermission", () => {
           message: "No API key provided",
         }),
       });
+    });
+
+    test("should reject API key without an owner reference", async () => {
+      const permissions: Permissions = { agent: ["read"] };
+      const headers: IncomingHttpHeaders = {
+        authorization: "Bearer ownerless-key",
+      };
+
+      mockBetterAuth.api.hasPermission.mockRejectedValue(
+        new Error("No active organization"),
+      );
+      mockBetterAuth.api.verifyApiKey.mockResolvedValue({
+        valid: true,
+        error: null,
+        key: makeApiKey({
+          referenceId: undefined as unknown as string,
+        }),
+      });
+
+      const result = await hasPermission(permissions, headers);
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.objectContaining({
+          message: "No API key provided",
+        }),
+      });
+      expect(mockUserModel.getById).not.toHaveBeenCalled();
+      expect(mockUserModel.getUserPermissions).not.toHaveBeenCalled();
     });
 
     test("should handle API key verification errors", async () => {
@@ -373,6 +395,27 @@ function makeApiKey(
     updatedAt: new Date(),
     metadata: null,
     permissions: null,
+    ...overrides,
+  };
+}
+
+function makeUserWithOrganization(
+  overrides: Partial<Awaited<ReturnType<typeof UserModel.getById>>> = {},
+): Awaited<ReturnType<typeof UserModel.getById>> {
+  return {
+    id: "user1",
+    name: "Test User",
+    email: "user1@test.com",
+    emailVerified: true,
+    image: null,
+    role: null,
+    banned: null,
+    banReason: null,
+    banExpires: null,
+    twoFactorEnabled: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    organizationId: "org-1",
     ...overrides,
   };
 }

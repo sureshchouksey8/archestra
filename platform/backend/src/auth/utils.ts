@@ -28,8 +28,8 @@ export const hasPermission = async (
     return result;
   } catch (error) {
     /**
-     * Handle API key sessions that don't have organization context
-     * API keys have all permissions by default (see auth config)
+     * Fall back to API key verification and check the key owner's current
+     * RBAC permissions.
      */
     logger.trace(
       { error: error instanceof Error ? error.message : "unknown" },
