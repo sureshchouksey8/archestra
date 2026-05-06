@@ -20,6 +20,8 @@ import {
 import packageJson from "../../package.json";
 
 type ProcessType = "web" | "worker" | "all";
+type BlobStorageProviderType = "db" | "s3";
+type S3BlobStorageAuthMethod = "irsa" | "static";
 
 /**
  * Load .env from platform root
@@ -479,6 +481,22 @@ export const parseTrustProxy = (
 };
 
 /** @public — exported for testability */
+export function parseBlobStorageProvider(
+  value: string | undefined,
+): BlobStorageProviderType {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "s3" ? "s3" : "db";
+}
+
+/** @public — exported for testability */
+export function parseS3BlobStorageAuthMethod(
+  value: string | undefined,
+): S3BlobStorageAuthMethod {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "static" ? "static" : "irsa";
+}
+
+/** @public — exported for testability */
 export const getAnalyticsConfig = () => ({
   enabled: process.env.ARCHESTRA_ANALYTICS !== "disabled",
   posthog: {
@@ -856,6 +874,37 @@ const config = {
   kb: {
     hybridSearchEnabled:
       process.env.ARCHESTRA_KNOWLEDGE_BASE_HYBRID_SEARCH_ENABLED !== "false",
+    fileUpload: {
+      blobStorage: {
+        provider: parseBlobStorageProvider(
+          process.env
+            .ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_BLOB_STORAGE_PROVIDER,
+        ),
+        s3: {
+          bucket:
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_BUCKET || "",
+          region:
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_REGION || "",
+          prefix:
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_PREFIX || "",
+          endpoint:
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_ENDPOINT || "",
+          forcePathStyle:
+            process.env
+              .ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_FORCE_PATH_STYLE ===
+            "true",
+          authMethod: parseS3BlobStorageAuthMethod(
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_AUTH_METHOD,
+          ),
+          accessKeyId:
+            process.env.ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_ACCESS_KEY_ID ||
+            "",
+          secretAccessKey:
+            process.env
+              .ARCHESTRA_KNOWLEDGE_BASE_FILE_UPLOAD_S3_SECRET_ACCESS_KEY || "",
+        },
+      },
+    },
     connectorSyncMaxDurationSeconds: parseConnectorSyncMaxDuration(
       process.env.ARCHESTRA_KNOWLEDGE_BASE_CONNECTOR_SYNC_MAX_DURATION_SECONDS,
     ),

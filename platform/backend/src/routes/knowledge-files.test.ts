@@ -1,0 +1,235 @@
+import { eq } from "drizzle-orm";
+import db, { schema } from "@/database";
+import {
+  AgentConnectorAssignmentModel,
+  KbUploadedFileModel,
+  KnowledgeBaseConnectorModel,
+} from "@/models";
+import type { FastifyInstanceWithZod } from "@/server";
+import { createFastifyInstance } from "@/server";
+import { afterEach, beforeEach, describe, expect, test, vi } from "@/test";
+import type { Agent, User } from "@/types";
+
+function buildUploadPayload(params: {
+  files: Array<{ name: string; content: Buffer; mimeType: string }>;
+  visibility?: "personal" | "team" | "org";
+  teamIds?: string[];
+  agentIds?: string[];
+}) {
+  return {
+    visibility: params.visibility ?? "personal",
+    teamIds: params.teamIds ?? [],
+    agentIds: params.agentIds ?? [],
+    files: params.files.map((file) => ({
+      name: file.name,
+      mimeType: file.mimeType,
+      content: file.content.toString("base64"),
+    })),
+  };
+}
+
+describe("knowledge file routes", () => {
+  let app: FastifyInstanceWithZod;
+  let user: User;
+  let organizationId: string;
+  let agent: Agent;
+
+  beforeEach(async ({ makeOrganization, makeUser, makeAgent }) => {
+    user = await makeUser();
+    const organization = await makeOrganization();
+    organizationId = organization.id;
+    agent = await makeAgent({
+      organizationId,
+      agentType: "agent",
+      name: "Research Agent",
+      teams: [],
+    });
+
+    app = createFastifyInstance();
+    app.addHook("onRequest", async (request) => {
+      (request as typeof request & { user: unknown }).user = user;
+      (
+        request as typeof request & {
+          organizationId: string;
+        }
+      ).organizationId = organizationId;
+    });
+
+    const { default: knowledgeBaseRoutes } = await import("./knowledge-base");
+    await app.register(knowledgeBaseRoutes);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await app.close();
+  });
+
+  test("uploads a personal file and assigns it to selected agents", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/knowledge-files",
+      payload: buildUploadPayload({
+        agentIds: [agent.id],
+        files: [
+          {
+            name: "agent-context.md",
+            content: Buffer.from("# Context\nUse this document."),
+            mimeType: "text/markdown",
+          },
+        ],
+      }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const result = response.json();
+    expect(result.results[0]).toMatchObject({
+      filename: "agent-context.md",
+      status: "created",
+    });
+
+    const file = await KbUploadedFileModel.findById(result.results[0].fileId);
+    expect(file).toMatchObject({
+      organizationId,
+      ownerId: user.id,
+      visibility: "personal",
+      teamIds: [],
+      originalName: "agent-context.md",
+    });
+
+    const assignments = await AgentConnectorAssignmentModel.findByConnector(
+      file?.connectorId ?? "",
+    );
+    expect(assignments.map((assignment) => assignment.agentId)).toEqual([
+      agent.id,
+    ]);
+  });
+
+  test("lists uploaded files with assigned agent summaries", async () => {
+    const upload = await app.inject({
+      method: "POST",
+      url: "/api/knowledge-files",
+      payload: buildUploadPayload({
+        agentIds: [agent.id],
+        files: [
+          {
+            name: "runbook.txt",
+            content: Buffer.from("Operational notes"),
+            mimeType: "text/plain",
+          },
+        ],
+      }),
+    });
+    expect(upload.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/knowledge-files?limit=20&offset=0",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([
+      expect.objectContaining({
+        originalName: "runbook.txt",
+        visibility: "personal",
+        assignedAgents: [
+          expect.objectContaining({
+            id: agent.id,
+            name: "Research Agent",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  test("hides file upload connectors from the normal connector list", async () => {
+    await KnowledgeBaseConnectorModel.create({
+      organizationId,
+      name: "Knowledge File: hidden.txt",
+      connectorType: "file_upload",
+      config: { type: "file_upload" },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/connectors?limit=20&offset=0",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([]);
+  });
+
+  test("rejects creating file upload connectors through connector CRUD", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        name: "Manual Files",
+        connectorType: "file_upload",
+        config: { type: "file_upload" },
+        credentials: { apiToken: "unused" },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.message).toContain("Knowledge > Files");
+  });
+
+  test("rejects unsupported file formats on the files page endpoint", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/knowledge-files",
+      payload: buildUploadPayload({
+        files: [
+          {
+            name: "notes.docx",
+            content: Buffer.from("unsupported"),
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          },
+        ],
+      }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([
+      {
+        filename: "notes.docx",
+        status: "unsupported",
+      },
+    ]);
+  });
+
+  test("deletes the uploaded file and its backing connector", async () => {
+    const upload = await app.inject({
+      method: "POST",
+      url: "/api/knowledge-files",
+      payload: buildUploadPayload({
+        files: [
+          {
+            name: "delete-me.txt",
+            content: Buffer.from("Temporary content"),
+            mimeType: "text/plain",
+          },
+        ],
+      }),
+    });
+    const fileId = upload.json().results[0].fileId as string;
+    const file = await KbUploadedFileModel.findById(fileId);
+    if (!file) {
+      throw new Error("Expected uploaded file to exist before deletion");
+    }
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/knowledge-files/${fileId}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await KbUploadedFileModel.findById(fileId)).toBeNull();
+    const connectors = await db
+      .select()
+      .from(schema.knowledgeBaseConnectorsTable)
+      .where(eq(schema.knowledgeBaseConnectorsTable.id, file.connectorId));
+    expect(connectors).toEqual([]);
+  });
+});

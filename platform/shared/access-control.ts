@@ -47,6 +47,7 @@ export const allAvailableActions: Record<Resource, Action[]> = {
   mcpServerInstallationRequest: ["read", "create", "update", "delete", "admin"],
 
   // Knowledge
+  knowledgeFile: ["read", "create", "update", "delete", "admin"],
   knowledgeSource: ["read", "create", "update", "delete", "query", "admin"],
 
   // Other
@@ -100,6 +101,7 @@ export const editorPermissions: Record<Resource, Action[]> = {
   mcpServerInstallationRequest: ["read", "create", "update", "delete"],
 
   // Knowledge
+  knowledgeFile: ["read", "create", "update", "delete"],
   knowledgeSource: ["read", "create", "update", "delete", "query"],
 
   // Other
@@ -153,6 +155,7 @@ export const memberPermissions: Record<Resource, Action[]> = {
   mcpServerInstallationRequest: ["read", "create", "update"],
 
   // Knowledge
+  knowledgeFile: ["read", "create", "update", "delete"],
   knowledgeSource: ["read", "query"],
 
   // Other
@@ -340,6 +343,12 @@ export const permissionDescriptions: Record<string, string> = {
   "knowledgeSource:query": "Query knowledge sources for information retrieval",
   "knowledgeSource:admin":
     "View all Knowledge Bases and Connectors, bypassing visibility restrictions",
+  "knowledgeFile:read": "View uploaded Knowledge Files",
+  "knowledgeFile:create": "Upload Knowledge Files",
+  "knowledgeFile:update": "Modify Knowledge File visibility and agent access",
+  "knowledgeFile:delete": "Delete Knowledge Files",
+  "knowledgeFile:admin":
+    "View all Knowledge Files, bypassing visibility restrictions",
   "knowledgeSettings:read":
     "View knowledge settings (embedding and reranking models)",
   "knowledgeSettings:update":
@@ -1032,6 +1041,14 @@ export const requiredEndpointPermissionsMap: Partial<
   [RouteId.GetConnectorFile]: { knowledgeSource: ["read"] },
   [RouteId.DeleteConnectorFile]: { knowledgeSource: ["delete"] },
 
+  // Knowledge File Routes
+  [RouteId.GetKnowledgeFiles]: { knowledgeFile: ["read"] },
+  [RouteId.UploadKnowledgeFiles]: { knowledgeFile: ["create"] },
+  [RouteId.GetKnowledgeFile]: { knowledgeFile: ["read"] },
+  [RouteId.UpdateKnowledgeFile]: { knowledgeFile: ["update"] },
+  [RouteId.DeleteKnowledgeFile]: { knowledgeFile: ["delete"] },
+  [RouteId.GetKnowledgeFileUploadConfig]: { knowledgeFile: ["read"] },
+
   // Config endpoint - any authenticated user can access
   [RouteId.GetConfig]: {},
 
@@ -1086,6 +1103,7 @@ export const requiredPagePermissionsMap: Record<string, Permissions> = {
 
   // Knowledge
   "/knowledge/knowledge-bases": { knowledgeSource: ["read"] },
+  "/knowledge/files": { knowledgeFile: ["read"] },
   "/knowledge/connectors": { knowledgeSource: ["read"] },
 
   // Settings

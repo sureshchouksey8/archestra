@@ -447,6 +447,14 @@ export const RouteId = {
   GetConnectorFile: "getConnectorFile",
   DeleteConnectorFile: "deleteConnectorFile",
 
+  // Knowledge File Routes
+  GetKnowledgeFiles: "getKnowledgeFiles",
+  UploadKnowledgeFiles: "uploadKnowledgeFiles",
+  GetKnowledgeFile: "getKnowledgeFile",
+  UpdateKnowledgeFile: "updateKnowledgeFile",
+  DeleteKnowledgeFile: "deleteKnowledgeFile",
+  GetKnowledgeFileUploadConfig: "getKnowledgeFileUploadConfig",
+
   // Invitation Routes
   CheckInvitation: "checkInvitation",
 } as const;

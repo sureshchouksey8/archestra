@@ -45,6 +45,10 @@ Pick the LLM that scores and reorders search results by relevance.
 
 A Knowledge Base is a set of connectors. Create one from the **Knowledge** page and assign connectors to get data from. The same Knowledge Base can be reused across multiple agents and MCP Gateways.
 
+### Uploading Files
+
+Files are static documents uploaded from **Knowledge > Files** and assigned directly to agents. Use files when you want reusable retrieval from `.txt`, `.md`, `.csv`, `.json`, `.xml`, or `.pdf` documents without setting up an external connector. See [Files](/docs/platform-knowledge-files).
+
 ### Creating a Connector
 
 Connectors pull data from external tools (Jira, Confluence, GitHub, etc.) and feed it into one or more Knowledge Bases. Each connector has a visibility setting that controls who can query its data — see [Connector Visibility](/docs/platform-knowledge-connectors#visibility). For supported types and configuration, see [Connectors](/docs/platform-knowledge-connectors).

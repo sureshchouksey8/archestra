@@ -1625,6 +1625,13 @@
       "when": 1778059392895,
       "tag": "0231_complex_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1778081083313,
+      "tag": "0232_chubby_talon",
+      "breakpoints": true
     }
   ]
 }

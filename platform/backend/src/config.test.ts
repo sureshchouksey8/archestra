@@ -15,12 +15,14 @@ import {
   getOtelExporterOtlpLogEndpoint,
   getOtlpAuthHeaders,
   getTrustedOrigins,
+  parseBlobStorageProvider,
   parseBodyLimit,
   parseCommaSeparatedList,
   parseConnectorSyncMaxDuration,
   parseContentMaxLength,
   parseMetricsPort,
   parseProcessType,
+  parseS3BlobStorageAuthMethod,
   parseSampleRate,
   parseTrustProxy,
   parseVirtualKeyDefaultExpiration,
@@ -991,6 +993,40 @@ describe("parseConnectorSyncMaxDuration", () => {
 
   test("should parse large value", () => {
     expect(parseConnectorSyncMaxDuration("7200")).toBe(7200);
+  });
+});
+
+describe("parseBlobStorageProvider", () => {
+  test("defaults to database storage", () => {
+    expect(parseBlobStorageProvider(undefined)).toBe("db");
+    expect(parseBlobStorageProvider("")).toBe("db");
+  });
+
+  test("accepts s3 case-insensitively", () => {
+    expect(parseBlobStorageProvider("s3")).toBe("s3");
+    expect(parseBlobStorageProvider(" S3 ")).toBe("s3");
+  });
+
+  test("falls back to database storage for unsupported values", () => {
+    expect(parseBlobStorageProvider("gcs")).toBe("db");
+    expect(parseBlobStorageProvider("local")).toBe("db");
+  });
+});
+
+describe("parseS3BlobStorageAuthMethod", () => {
+  test("defaults to IRSA", () => {
+    expect(parseS3BlobStorageAuthMethod(undefined)).toBe("irsa");
+    expect(parseS3BlobStorageAuthMethod("")).toBe("irsa");
+  });
+
+  test("accepts static access key auth case-insensitively", () => {
+    expect(parseS3BlobStorageAuthMethod("static")).toBe("static");
+    expect(parseS3BlobStorageAuthMethod(" STATIC ")).toBe("static");
+  });
+
+  test("falls back to IRSA for unsupported values", () => {
+    expect(parseS3BlobStorageAuthMethod("iam-user")).toBe("irsa");
+    expect(parseS3BlobStorageAuthMethod("profile")).toBe("irsa");
   });
 });
 

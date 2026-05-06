@@ -1,0 +1,275 @@
+import { randomUUID } from "node:crypto";
+import type { ResourceVisibilityScope } from "@shared";
+import config from "@/config";
+import {
+  extractTextFiles,
+  MAX_FILE_SIZE_BYTES,
+} from "@/knowledge-base/connectors/file-upload/file-processor";
+import {
+  AgentConnectorAssignmentModel,
+  AgentModel,
+  KbDocumentModel,
+  KbUploadedFileModel,
+  KnowledgeBaseConnectorModel,
+} from "@/models";
+import { taskQueueService } from "@/task-queue";
+import { ApiError } from "@/types";
+import { getConfiguredBlobStorageProvider } from "./blob-storage-providers";
+
+export const KNOWLEDGE_FILE_CONNECTOR_NAME_PREFIX = "Knowledge File:";
+
+type UploadKnowledgeFileParams = {
+  organizationId: string;
+  userId: string;
+  name: string;
+  mimeType: string;
+  content: string;
+  visibility: ResourceVisibilityScope;
+  teamIds: string[];
+  agentIds: string[];
+};
+
+class FileUploadManager {
+  async uploadKnowledgeFile(params: UploadKnowledgeFileParams) {
+    this.validateVisibility(params.visibility, params.teamIds);
+    const rawBuffer = Buffer.from(params.content, "base64");
+    if (rawBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
+      return {
+        filename: params.name,
+        status: "too_large" as const,
+      };
+    }
+
+    if (!isSupportedKnowledgeFileFormat(params.name, params.mimeType)) {
+      return {
+        filename: params.name,
+        status: "unsupported" as const,
+      };
+    }
+
+    const extraction = await extractTextFiles(
+      rawBuffer,
+      params.mimeType,
+      params.name,
+    );
+    if (extraction.extracted.length === 0) {
+      return {
+        filename: params.name,
+        status: "extraction_failed" as const,
+      };
+    }
+
+    const contentHash = KbUploadedFileModel.computeContentHash(
+      rawBuffer.toString("base64"),
+    );
+    const existing = await KbUploadedFileModel.findByOrganizationContentHash({
+      organizationId: params.organizationId,
+      contentHash,
+    });
+    if (existing) {
+      return {
+        filename: params.name,
+        status: "duplicate" as const,
+        fileId: existing.id,
+      };
+    }
+
+    await this.assertAgentsBelongToOrganization({
+      organizationId: params.organizationId,
+      agentIds: params.agentIds,
+    });
+
+    const connector = await KnowledgeBaseConnectorModel.create({
+      organizationId: params.organizationId,
+      name: `${KNOWLEDGE_FILE_CONNECTOR_NAME_PREFIX} ${params.name}`,
+      description: null,
+      visibility: "org-wide",
+      teamIds: [],
+      connectorType: "file_upload",
+      config: { type: "file_upload" },
+      secretId: null,
+      schedule: "0 */6 * * *",
+      enabled: false,
+    });
+
+    const fileId = randomUUID();
+    const blobPointer = await getConfiguredBlobStorageProvider().put({
+      organizationId: params.organizationId,
+      fileId,
+      filename: params.name,
+      mimeType: params.mimeType,
+      data: rawBuffer,
+    });
+
+    const file = await KbUploadedFileModel.create({
+      id: fileId,
+      connectorId: connector.id,
+      organizationId: params.organizationId,
+      ownerId: params.userId,
+      visibility: params.visibility,
+      teamIds: params.teamIds,
+      originalName: params.name,
+      mimeType: params.mimeType,
+      fileSize: rawBuffer.byteLength,
+      contentHash,
+      fileData: blobPointer.dbData,
+      blobStorageProvider:
+        blobPointer.provider === "db" ? null : blobPointer.provider,
+      blobStorageKey: blobPointer.key,
+      processingStatus: "pending",
+    });
+
+    for (const agentId of params.agentIds) {
+      await AgentConnectorAssignmentModel.assign(agentId, connector.id);
+    }
+
+    await taskQueueService.enqueue({
+      taskType: "process_uploaded_files",
+      payload: {
+        connectorId: connector.id,
+        fileIds: [file.id],
+      },
+    });
+
+    return {
+      filename: params.name,
+      status: "created" as const,
+      fileId: file.id,
+    };
+  }
+
+  async updateKnowledgeFile(params: {
+    organizationId: string;
+    fileId: string;
+    visibility: ResourceVisibilityScope;
+    teamIds: string[];
+    agentIds: string[];
+  }) {
+    this.validateVisibility(params.visibility, params.teamIds);
+    const file = await KbUploadedFileModel.findById(params.fileId);
+    if (!file || file.organizationId !== params.organizationId) {
+      throw new ApiError(404, "File not found");
+    }
+
+    await this.assertAgentsBelongToOrganization({
+      organizationId: params.organizationId,
+      agentIds: params.agentIds,
+    });
+
+    const updated = await KbUploadedFileModel.updateVisibility({
+      id: params.fileId,
+      visibility: params.visibility,
+      teamIds: params.teamIds,
+    });
+    await AgentConnectorAssignmentModel.syncForAgentAssignments({
+      connectorId: file.connectorId,
+      agentIds: params.agentIds,
+    });
+
+    await KbDocumentModel.deleteByConnectorAndSourceId({
+      connectorId: file.connectorId,
+      sourceId: params.fileId,
+    });
+    await KbUploadedFileModel.updateProcessingStatus(params.fileId, "pending");
+    await taskQueueService.enqueue({
+      taskType: "process_uploaded_files",
+      payload: {
+        connectorId: file.connectorId,
+        fileIds: [params.fileId],
+      },
+    });
+
+    return updated;
+  }
+
+  async deleteKnowledgeFile(params: {
+    organizationId: string;
+    fileId: string;
+  }) {
+    const file = await KbUploadedFileModel.findById(params.fileId);
+    if (!file || file.organizationId !== params.organizationId) {
+      throw new ApiError(404, "File not found");
+    }
+
+    await KbDocumentModel.deleteByConnectorAndSourceId({
+      connectorId: file.connectorId,
+      sourceId: params.fileId,
+    });
+    await getConfiguredBlobStorageProvider().delete({
+      key: file.blobStorageKey,
+    });
+    await KbUploadedFileModel.delete(params.fileId);
+    await KnowledgeBaseConnectorModel.delete(file.connectorId);
+  }
+
+  getSupportedFileUploadConfig() {
+    return {
+      maxFileSizeBytes: MAX_FILE_SIZE_BYTES,
+      externalBlobStorageEnabled:
+        config.kb.fileUpload.blobStorage.provider !== "db",
+      blobStorageProvider: config.kb.fileUpload.blobStorage.provider,
+    };
+  }
+
+  private validateVisibility(
+    visibility: ResourceVisibilityScope,
+    teamIds: string[],
+  ) {
+    if (visibility === "team" && teamIds.length === 0) {
+      throw new ApiError(400, "At least one team must be selected");
+    }
+  }
+
+  private async assertAgentsBelongToOrganization(params: {
+    organizationId: string;
+    agentIds: string[];
+  }) {
+    const uniqueAgentIds = [...new Set(params.agentIds)];
+    if (uniqueAgentIds.length === 0) return;
+
+    const agents = await AgentModel.findBasicByOrganizationIdAndIds({
+      organizationId: params.organizationId,
+      agentIds: uniqueAgentIds,
+    });
+    if (agents.length !== uniqueAgentIds.length) {
+      throw new ApiError(400, "One or more agents are not available");
+    }
+  }
+}
+
+export const fileUploadManager = new FileUploadManager();
+
+// ===== Internal Helpers =====
+
+function isSupportedKnowledgeFileFormat(
+  filename: string,
+  mimeType: string,
+): boolean {
+  const extension = filename.split(".").pop()?.toLowerCase();
+  if (extension && SUPPORTED_KNOWLEDGE_FILE_EXTENSIONS.has(extension)) {
+    return true;
+  }
+
+  const normalizedMimeType = mimeType.split(";")[0].trim().toLowerCase();
+  return SUPPORTED_KNOWLEDGE_FILE_MIME_TYPES.has(normalizedMimeType);
+}
+
+const SUPPORTED_KNOWLEDGE_FILE_EXTENSIONS = new Set([
+  "txt",
+  "md",
+  "csv",
+  "json",
+  "xml",
+  "pdf",
+]);
+
+const SUPPORTED_KNOWLEDGE_FILE_MIME_TYPES = new Set([
+  "application/csv",
+  "application/json",
+  "application/pdf",
+  "application/vnd.ms-excel",
+  "application/xml",
+  "text/csv",
+  "text/markdown",
+  "text/plain",
+]);

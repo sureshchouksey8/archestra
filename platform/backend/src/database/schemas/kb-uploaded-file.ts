@@ -1,7 +1,9 @@
+import type { ResourceVisibilityScope } from "@shared";
 import {
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -26,17 +28,26 @@ const kbUploadedFilesTable = pgTable(
         onDelete: "cascade",
       }),
     organizationId: text("organization_id").notNull(),
+    ownerId: text("owner_id"),
+    visibility: text("visibility")
+      .$type<ResourceVisibilityScope>()
+      .notNull()
+      .default("org"),
+    teamIds: jsonb("team_ids").$type<string[]>().notNull().default([]),
     originalName: text("original_name").notNull(),
     mimeType: text("mime_type").notNull(),
     fileSize: integer("file_size").notNull(),
     contentHash: text("content_hash").notNull(),
-    fileData: bytea("file_data").notNull(),
+    fileData: bytea("file_data"),
+    blobStorageProvider: text("blob_storage_provider"),
+    blobStorageKey: text("blob_storage_key"),
     processingStatus: text("processing_status").notNull().default("completed"),
     processingError: text("processing_error"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     index("kb_uploaded_files_connector_id_idx").on(table.connectorId),
+    index("kb_uploaded_files_organization_id_idx").on(table.organizationId),
     uniqueIndex("kb_uploaded_files_content_hash_uidx").on(
       table.connectorId,
       table.contentHash,

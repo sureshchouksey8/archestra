@@ -63,6 +63,7 @@ class KnowledgeBaseConnectorModel {
     offset: number;
     search?: string;
     connectorType?: ConnectorType;
+    excludeConnectorTypes?: ConnectorType[];
     canReadAll?: boolean;
     viewerTeamIds?: string[];
   }): Promise<{ data: KnowledgeBaseConnector[]; total: number }> {
@@ -72,6 +73,7 @@ class KnowledgeBaseConnectorModel {
       offset,
       search,
       connectorType,
+      excludeConnectorTypes,
       canReadAll,
       viewerTeamIds,
     } = params;
@@ -82,6 +84,14 @@ class KnowledgeBaseConnectorModel {
       buildVisibilityFilter({ canReadAll, teamIds: viewerTeamIds }),
       ...(connectorType
         ? [eq(schema.knowledgeBaseConnectorsTable.connectorType, connectorType)]
+        : []),
+      ...(excludeConnectorTypes && excludeConnectorTypes.length > 0
+        ? [
+            sql`${schema.knowledgeBaseConnectorsTable.connectorType} NOT IN (${sql.join(
+              excludeConnectorTypes.map((type) => sql`${type}`),
+              sql`, `,
+            )})`,
+          ]
         : []),
       ...(searchPattern
         ? [
