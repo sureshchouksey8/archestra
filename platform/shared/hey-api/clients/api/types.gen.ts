@@ -10870,6 +10870,8 @@ export type GetAgentsResponses = {
                 maxRounds: number;
             } | {
                 name: 'dual-llm-quarantine-agent';
+            } | {
+                name: 'context-compaction-subagent';
             } | null;
             builtIn: boolean | null;
             createdAt: string;
@@ -10965,6 +10967,8 @@ export type CreateAgentData = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         teams?: Array<string>;
         labels?: Array<{
@@ -11085,6 +11089,8 @@ export type CreateAgentResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -11271,6 +11277,8 @@ export type GetAllAgentsResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -11436,6 +11444,8 @@ export type GetDefaultMcpGatewayResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -11601,6 +11611,8 @@ export type GetDefaultLlmProxyResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -11849,6 +11861,8 @@ export type ImportAgentResponses = {
                 maxRounds: number;
             } | {
                 name: 'dual-llm-quarantine-agent';
+            } | {
+                name: 'context-compaction-subagent';
             } | null;
             builtIn: boolean | null;
             createdAt: string;
@@ -12107,6 +12121,8 @@ export type GetAgentResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -12193,6 +12209,8 @@ export type UpdateAgentData = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         teams?: Array<string>;
         labels?: Array<{
@@ -12315,6 +12333,8 @@ export type UpdateAgentResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -12482,6 +12502,8 @@ export type CloneAgentResponses = {
             maxRounds: number;
         } | {
             name: 'dual-llm-quarantine-agent';
+        } | {
+            name: 'context-compaction-subagent';
         } | null;
         builtIn: boolean | null;
         createdAt: string;
@@ -25437,6 +25459,7 @@ export type GetInteractionSessionsResponses = {
             sessionId: string | null;
             sessionSource: string | null;
             source: 'api' | 'model_router' | 'chat' | 'chat:compaction' | 'chatops:slack' | 'chatops:ms-teams' | 'email' | 'schedule-trigger' | 'knowledge:embedding' | 'knowledge:reranker' | 'knowledge:query-expansion';
+            sources: Array<'api' | 'model_router' | 'chat' | 'chat:compaction' | 'chatops:slack' | 'chatops:ms-teams' | 'email' | 'schedule-trigger' | 'knowledge:embedding' | 'knowledge:reranker' | 'knowledge:query-expansion'>;
             interactionId: string | null;
             requestCount: number;
             totalInputTokens: number;
