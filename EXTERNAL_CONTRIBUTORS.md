@@ -308,3 +308,8 @@ To unblock real contributors without re-opening the floodgates, sign in via GitH
 - @mgalavai
 - @Gammarays1980
 - @AshuraXX2206
+- @surbhitCodes
+- @quietpatchlab
+- @CyberSarvesh
+- @itsbryanman
+- @im-shafiqurrehman
