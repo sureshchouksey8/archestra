@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronRight,
   Globe,
+  Info,
   Key,
   LayoutList,
   Loader2,
@@ -1332,6 +1333,12 @@ export function AgentDialog({
         >
           {viewMode === "json" && (
             <div className="flex min-h-0 flex-1 flex-col px-4 py-4 gap-2">
+              <Alert variant="info">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  JSON editing is an experimental feature.
+                </AlertDescription>
+              </Alert>
               {jsonError && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
@@ -2429,27 +2436,31 @@ export function AgentDialog({
             </div>
           </fieldset>
           <DialogStickyFooter className="mt-0 sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (viewMode === "form") switchToJsonView();
-                else switchToFormView();
-              }}
-            >
-              {viewMode === "form" ? (
-                <>
-                  <Braces className="h-4 w-4 mr-1.5" />
-                  JSON View
-                </>
-              ) : (
-                <>
-                  <LayoutList className="h-4 w-4 mr-1.5" />
-                  Form View
-                </>
-              )}
-            </Button>
+            {agentType !== "llm_proxy" && agentType !== "profile" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (viewMode === "form") switchToJsonView();
+                  else switchToFormView();
+                }}
+              >
+                {viewMode === "form" ? (
+                  <>
+                    <Braces className="h-4 w-4 mr-1.5" />
+                    JSON View
+                  </>
+                ) : (
+                  <>
+                    <LayoutList className="h-4 w-4 mr-1.5" />
+                    Form View
+                  </>
+                )}
+              </Button>
+            ) : (
+              <span />
+            )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button type="button" variant="outline" onClick={handleClose}>
                 {readOnly ? "Close" : "Cancel"}
