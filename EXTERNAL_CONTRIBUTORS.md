@@ -332,3 +332,6 @@ To unblock real contributors without re-opening the floodgates, sign in via GitH
 - @Desaon-CUST
 - @douglaswangome
 - @oocheol
+- @akamabu
+- @sachin0903
+- @mbachaud
