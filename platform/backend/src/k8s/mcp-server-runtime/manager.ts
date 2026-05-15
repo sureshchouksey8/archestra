@@ -308,6 +308,31 @@ export class McpServerRuntimeManager {
         }
       }
 
+      // Plain (non-secret) per-install env values for `promptOnInstallation`
+      // env vars live on `mcp_server.environmentValues` (jsonb) — populated
+      // by the install route from the user's typed values. Secret-typed
+      // prompted values are recovered via the install Secret bag above;
+      // this block recovers the plain-text complement, completing the set
+      // of "values the user supplied at install time" so they survive
+      // every auto-redeploy.
+      //
+      // Without this overlay the same chain that drops plain preset values
+      // would drop plain prompted values too — the deployment env builder
+      // omits any `promptOnInstallation` env var that isn't in
+      // environmentValues at restart time.
+      if (mcpServer.environmentValues) {
+        for (const [key, value] of Object.entries(
+          mcpServer.environmentValues,
+        )) {
+          if (value != null) {
+            if (!effectiveEnvironmentValues) {
+              effectiveEnvironmentValues = {};
+            }
+            effectiveEnvironmentValues[key] = String(value);
+          }
+        }
+      }
+
       const k8sDeployment = new K8sDeployment({
         mcpServer,
         k8sApi: this.k8sApi,

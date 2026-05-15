@@ -724,10 +724,30 @@ const mcpServerRoutes: FastifyPluginAsyncZod = async (fastify) => {
         }
       }
 
+      // Persist the user-supplied plain (non-secret) values for any
+      // promptOnInstallation env vars onto the install row's
+      // `environmentValues` jsonb column. Secret-typed prompted values
+      // live in the install K8s Secret bag (mcpServer.secretId) and are
+      // handled by the secret-collection block above. Keeping these
+      // plain values on the install row is what allows auto-redeploy
+      // (cascade reinstall, restart, etc.) to recover them later — the
+      // bag rebuild in McpServerRuntimeManager.startServer only restores
+      // secret-typed values.
+      const installEnvironmentValues: Record<string, string> = {};
+      for (const envDef of catalogItem?.localConfig?.environment ?? []) {
+        if (envDef.promptOnInstallation && envDef.type !== "secret") {
+          const value = environmentValues?.[envDef.key];
+          if (value !== undefined && value !== null && value !== "") {
+            installEnvironmentValues[envDef.key] = String(value);
+          }
+        }
+      }
+
       // Create the MCP server with optional secret reference
       const mcpServer = await McpServerModel.create({
         ...serverData,
         ...(secretId && { secretId }),
+        environmentValues: installEnvironmentValues,
       });
 
       try {

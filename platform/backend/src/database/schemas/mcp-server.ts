@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -41,6 +42,25 @@ const mcpServerTable = pgTable(
     secretId: uuid("secret_id").references(() => secretTable.id, {
       onDelete: "set null",
     }),
+    /**
+     * Per-install plain (non-secret) env values for `promptOnInstallation`
+     * env vars — supplied by the user in the install dialog. Persisted here
+     * so they can be re-applied on auto-redeploy (catalog template edit
+     * cascade, restart, etc.) without requiring a manual reinstall.
+     *
+     * Secret-typed prompted env values do NOT live here — they're stored
+     * in the per-install K8s Secret bundle referenced by `secretId`.
+     *
+     * Shape: { [envVarKey]: stringValue }. Defaults to {} for installs
+     * created before this column was added; those installs will see their
+     * plain prompted env vars dropped on the next auto-redeploy until they
+     * reinstall manually (intentional — see migration's UPDATE that flags
+     * affected installs as `reinstall_required`).
+     */
+    environmentValues: jsonb("environment_values")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
     ownerId: text("owner_id").references(() => usersTable.id, {
       onDelete: "set null",
     }),
