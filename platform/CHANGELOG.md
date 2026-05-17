@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.2.50](https://github.com/archestra-ai/archestra/compare/platform-v1.2.48...platform-v1.2.50) (2026-05-17)
+
+
+### Features
+
+* mcp catalog presets ([#4402](https://github.com/archestra-ai/archestra/issues/4402)) ([95644e2](https://github.com/archestra-ai/archestra/commit/95644e2ccdcca9ba97c836bb6edeea14bc587328))
+* support Azure inference URL overrides ([#4682](https://github.com/archestra-ai/archestra/issues/4682)) ([dba30ee](https://github.com/archestra-ai/archestra/commit/dba30eed5e6ed5c5b5221a1164519934b85f06e2))
+* support per-limit cleanup intervals and default user limits ([#4668](https://github.com/archestra-ai/archestra/issues/4668)) ([42ae7dd](https://github.com/archestra-ai/archestra/commit/42ae7dd33c025c20fbbd75f5f4e6e005c8cd029a))
+
+
+### Bug Fixes
+
+* don't require env variable ARCHESTRA_VLLM_BASE_URL ([#4308](https://github.com/archestra-ai/archestra/issues/4308)) ([2581460](https://github.com/archestra-ai/archestra/commit/2581460b173374aa7001119ac10f695b49f51d78))
+* **e2e:** scope addCustomSelfHostedCatalogItem to the new env-var sub-dialog ([#4696](https://github.com/archestra-ai/archestra/issues/4696) follow-up) ([#4704](https://github.com/archestra-ai/archestra/issues/4704)) ([5514b42](https://github.com/archestra-ai/archestra/commit/5514b4204ea60f1c310a8c85470024eb981caa95))
+* honor keyless azure chat provider keys ([#4692](https://github.com/archestra-ai/archestra/issues/4692)) ([9ff1162](https://github.com/archestra-ai/archestra/commit/9ff1162db6d2415b16e9b321ea5ebc88ea289573))
+* make claude code work ([#4686](https://github.com/archestra-ai/archestra/issues/4686)) ([b646834](https://github.com/archestra-ai/archestra/commit/b646834e642d34bcda759c78f73567f012dde625))
+* **mcp-gateway:** stop caching negative auth results to break the 401 race ([#4708](https://github.com/archestra-ai/archestra/issues/4708)) ([8570c9e](https://github.com/archestra-ai/archestra/commit/8570c9ed5c451d701d78021089781a15a8acc621))
+* **orchestrator:** preserve plain preset env vars across auto redeploy ([#4703](https://github.com/archestra-ai/archestra/issues/4703)) ([5359004](https://github.com/archestra-ai/archestra/commit/53590048069c7d7b3a6118dbef242d140767989e))
+* **presets:** preset edit silently fails when row carries orphan keys from past scope flips ([#4701](https://github.com/archestra-ai/archestra/issues/4701)) ([80b09ba](https://github.com/archestra-ai/archestra/commit/80b09ba1cef12c98eef0ccacbfa5110630319365))
+* **presets:** scope password manager autofill to the preset editor form ([#4697](https://github.com/archestra-ai/archestra/issues/4697)) ([7288fa0](https://github.com/archestra-ai/archestra/commit/7288fa0aadbee0b2bb686e7cfb7e25bf68ffe9a3))
+* prevent backend crash when Socket Mode WebSocket rotates ([#4695](https://github.com/archestra-ai/archestra/issues/4695)) ([1fe5d17](https://github.com/archestra-ai/archestra/commit/1fe5d177894baef8fe00cabef17bb34e205ff072))
+* proxy to catalog from backend too ([#4717](https://github.com/archestra-ai/archestra/issues/4717)) ([f89e53a](https://github.com/archestra-ai/archestra/commit/f89e53abd69ebe855e281c8b5182762f8d92b64d))
+* stop double-prefixing path in Anthropic proxy fallback ([#4662](https://github.com/archestra-ai/archestra/issues/4662)) ([e23d2fd](https://github.com/archestra-ai/archestra/commit/e23d2fd82cffb9b6c4c1ffdfc718c5972ba8ad96))
+
+
+### Miscellaneous Chores
+
+* backport xml hotfix ([#4677](https://github.com/archestra-ai/archestra/issues/4677)) ([be917b6](https://github.com/archestra-ai/archestra/commit/be917b664868323131d33b04e630824ba667abff))
+* move env var and header add/edit into dialogs with read-only catalog tables ([#4696](https://github.com/archestra-ai/archestra/issues/4696)) ([8abb77d](https://github.com/archestra-ai/archestra/commit/8abb77daf1a7e16ce6a8700edc45b4d766bb40f8))
+* move envFrom and Secret Files add/edit into dialogs ([#4698](https://github.com/archestra-ai/archestra/issues/4698)) ([caaa920](https://github.com/archestra-ai/archestra/commit/caaa920fecbf2a03f2431d8cc0797c3b85ce2d5f))
+* **release:** bump version ([#4678](https://github.com/archestra-ai/archestra/issues/4678)) ([4852e22](https://github.com/archestra-ai/archestra/commit/4852e22b06942c2293f1da7dfe7f4c6c88f19539))
+
 ## [1.2.48](https://github.com/archestra-ai/archestra/compare/platform-v1.2.47...platform-v1.2.48) (2026-05-14)
 
 
