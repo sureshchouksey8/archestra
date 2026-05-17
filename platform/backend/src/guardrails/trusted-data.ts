@@ -64,23 +64,19 @@ export async function evaluateIfContextIsTrusted(
   let unsafeContextBoundary: UnsafeContextBoundary | undefined;
 
   // If agent configured to consider context untrusted from the beginning,
-  // mark context as untrusted immediately and skip evaluation
+  // keep that boundary while still evaluating tool-result policies. Blocked
+  // tool results must still be replaced before they reach the model.
   if (considerContextUntrusted) {
     logger.debug(
       { agentId },
       "[trustedData] evaluateIfContextIsTrusted: context marked untrusted by agent config",
     );
-    return {
-      toolResultUpdates: {},
-      contextIsTrusted: false,
-      usedDualLlm: false,
-      dualLlmAnalyses: [],
-      unsafeContextBoundary: {
-        kind: "preexisting_untrusted",
-        reason:
-          initialUntrustedReason ??
-          UNSAFE_CONTEXT_BOUNDARY_REASON.agentConfiguredUntrusted,
-      },
+    hasUntrustedData = true;
+    unsafeContextBoundary = {
+      kind: "preexisting_untrusted",
+      reason:
+        initialUntrustedReason ??
+        UNSAFE_CONTEXT_BOUNDARY_REASON.agentConfiguredUntrusted,
     };
   }
 
@@ -111,12 +107,12 @@ export async function evaluateIfContextIsTrusted(
 
   if (allToolCalls.length === 0) {
     logger.debug(
-      { agentId },
-      "[trustedData] evaluateIfContextIsTrusted: no tool calls found, context is trusted",
+      { agentId, contextIsTrusted: !hasUntrustedData },
+      "[trustedData] evaluateIfContextIsTrusted: no tool calls found",
     );
     return {
       toolResultUpdates,
-      contextIsTrusted: true,
+      contextIsTrusted: !hasUntrustedData,
       usedDualLlm: false,
       dualLlmAnalyses: [],
       unsafeContextBoundary,
