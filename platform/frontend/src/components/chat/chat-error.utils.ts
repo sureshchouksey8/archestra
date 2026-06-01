@@ -130,6 +130,7 @@ const BACKEND_ERROR_TYPE_TO_CODE: Record<string, ChatErrorCode> = {
   api_authorization_error: ChatErrorCode.PermissionDenied,
   api_not_found_error: ChatErrorCode.NotFound,
   api_internal_server_error: ChatErrorCode.ServerError,
+  rate_limit_exceeded: ChatErrorCode.RateLimit,
 };
 
 /**

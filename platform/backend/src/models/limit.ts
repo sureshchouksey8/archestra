@@ -8,6 +8,7 @@ import type {
   LimitEntityType,
   LimitType,
   UpdateLimit,
+  ConstrainingLimitResult,
 } from "@/types";
 import AgentTeamModel from "./agent-team";
 import ModelModel from "./model";
@@ -903,29 +904,20 @@ export class LimitValidationService {
 <archestra-limit-remaining>${Math.max(0, limit.limitValue - totalTokens)}</archestra-limit-remaining>`;
 
           // For user message, use appropriate units based on limit type
-          let contentMessage: string;
-          if (limitDescription === "cost_dollars") {
-            contentMessage = `
-I cannot process this request because the ${entityType}-level token cost limit has been exceeded.
-
-Current usage: $${comparisonValue.toFixed(2)}
-Limit: $${limit.limitValue.toFixed(2)}
-Remaining: $${remaining.toFixed(2)}
-
-Please contact your administrator to increase the limit or wait for the usage to reset.`;
-          } else {
-            contentMessage = `
-I cannot process this request because the ${entityType}-level token cost limit has been exceeded.
-
-Current usage: ${totalTokens.toLocaleString()} tokens
-Limit: ${limit.limitValue.toLocaleString()} tokens
-Remaining: ${Math.max(0, limit.limitValue - totalTokens).toLocaleString()} tokens
-
-Please contact your administrator to increase the limit or wait for the usage to reset.`;
-          }
-
-          const refusalMessage = `${archestraMetadata}
-${contentMessage}`;
+          const limitInfo = {
+            lastCleanup: limit.lastCleanup,
+            cleanupInterval: limit.cleanupInterval,
+          };
+          const [refusalMessage, contentMessage] = buildLimitViolationResponse({
+            entityType,
+            entityId,
+            limitValue: limit.limitValue,
+            comparisonValue,
+            limitDescription,
+            totalTokensIn,
+            totalTokensOut,
+            limitInfo,
+          });
 
           return [refusalMessage, contentMessage];
         } else {
@@ -1000,12 +992,202 @@ ${contentMessage}`;
         limitDescription: "cost_dollars",
         totalTokensIn: usage.tokensIn,
         totalTokensOut: usage.tokensOut,
+        limitInfo: {
+          lastCleanup: null,
+          cleanupInterval: organization.defaultUserLimitCleanupInterval ?? "1w",
+        },
       });
     } catch (error) {
       logger.error(
         { error, params },
         "[LimitValidation] Error checking default user limit",
       );
+      return null;
+    }
+  }
+
+  /**
+   * Evaluates all applicable limits and returns the most constraining one (the one closest to its limit value).
+   * This logic maps identically to `checkLimitsBeforeRequest` but returns the full context of limits.
+   */
+  static async getMostConstrainingLimit(params: {
+    agentId: string;
+    userId?: string;
+    virtualKeyId?: string;
+  }): Promise<ConstrainingLimitResult | null> {
+    const { agentId, userId, virtualKeyId } = params;
+
+    let organizationId: string | null = null;
+    const agentTeamIds = await AgentTeamModel.getTeamsForAgent(agentId);
+
+    if (agentTeamIds.length > 0) {
+      const teams = await db
+        .select()
+        .from(schema.teamsTable)
+        .where(inArray(schema.teamsTable.id, agentTeamIds));
+      if (teams.length > 0 && teams[0].organizationId) {
+        organizationId = teams[0].organizationId;
+      }
+    } else {
+      const [agent] = await db
+        .select({ organizationId: schema.agentsTable.organizationId })
+        .from(schema.agentsTable)
+        .where(eq(schema.agentsTable.id, agentId))
+        .limit(1);
+      if (agent?.organizationId) {
+        organizationId = agent.organizationId;
+      }
+    }
+
+    const allLimits: ConstrainingLimitResult[] = [];
+
+    if (virtualKeyId) {
+      allLimits.push(
+        ...(await this.evaluateEntityLimits("virtual_key", virtualKeyId)),
+      );
+    }
+    if (userId) {
+      allLimits.push(...(await this.evaluateEntityLimits("user", userId)));
+      if (organizationId) {
+        const defaultUserLimit = await this.evaluateDefaultUserLimitForContext(
+          organizationId,
+          userId,
+        );
+        if (defaultUserLimit) allLimits.push(defaultUserLimit);
+      }
+    }
+    allLimits.push(...(await this.evaluateEntityLimits("agent", agentId)));
+    
+    if (agentTeamIds.length > 0) {
+      const teams = await db
+        .select()
+        .from(schema.teamsTable)
+        .where(inArray(schema.teamsTable.id, agentTeamIds));
+      for (const team of teams) {
+        allLimits.push(...(await this.evaluateEntityLimits("team", team.id)));
+      }
+      if (organizationId) {
+        allLimits.push(
+          ...(await this.evaluateEntityLimits("organization", organizationId)),
+        );
+      }
+    }
+
+    if (allLimits.length === 0) return null;
+
+    // Find the most constraining (highest usage ratio or smallest remaining / limit value)
+    return allLimits.reduce((mostConstraining, current) => {
+      const currentRatio = current.limitValue > 0 ? current.currentUsage / current.limitValue : Infinity;
+      const mostRatio = mostConstraining.limitValue > 0 ? mostConstraining.currentUsage / mostConstraining.limitValue : Infinity;
+      return currentRatio > mostRatio ? current : mostConstraining;
+    }, allLimits[0]);
+  }
+
+  private static async evaluateEntityLimits(
+    entityType: LimitEntityType,
+    entityId: string,
+  ): Promise<ConstrainingLimitResult[]> {
+    try {
+      const limits = await LimitModel.findLimitsForValidation(
+        entityType,
+        entityId,
+        "token_cost",
+      );
+      const results: ConstrainingLimitResult[] = [];
+
+      for (const limit of limits) {
+        let comparisonValue = 0;
+
+        if (limit.limitType === "token_cost") {
+          const modelUsages = await db
+            .select()
+            .from(schema.limitModelUsageTable)
+            .where(eq(schema.limitModelUsageTable.limitId, limit.id));
+
+          if (modelUsages.length > 0) {
+            const usageCosts = await calculateModelUsageCosts(modelUsages);
+            comparisonValue = usageCosts.cost;
+          }
+        }
+
+        let resetsAt: Date | null = null;
+        if (limit.lastCleanup && limit.cleanupInterval) {
+          const msMapping: Record<LimitCleanupInterval, number> = {
+            "1h": 60 * 60 * 1000,
+            "12h": 12 * 60 * 60 * 1000,
+            "24h": 24 * 60 * 60 * 1000,
+            "1w": 7 * 24 * 60 * 60 * 1000,
+            "1m": 30 * 24 * 60 * 60 * 1000,
+          };
+          resetsAt = new Date(
+            limit.lastCleanup.getTime() + (msMapping[limit.cleanupInterval] ?? 0),
+          );
+        }
+
+        results.push({
+          isDefaultUserLimit: false,
+          limitType: limit.limitType,
+          entityType: limit.entityType,
+          entityId: limit.entityId,
+          limitValue: limit.limitValue,
+          currentUsage: comparisonValue,
+          remainingUsage: Math.max(0, limit.limitValue - comparisonValue),
+          resetsAt,
+          models: limit.model,
+        });
+      }
+
+      return results;
+    } catch (error) {
+      logger.error(`[LimitValidation] Error evaluating entity limits: ${error}`);
+      return [];
+    }
+  }
+
+  private static async evaluateDefaultUserLimitForContext(
+    organizationId: string,
+    userId: string,
+  ): Promise<ConstrainingLimitResult | null> {
+    try {
+      const [organization] = await db
+        .select({
+          defaultUserLimitValue: schema.organizationsTable.defaultUserLimitValue,
+          defaultUserLimitModel: schema.organizationsTable.defaultUserLimitModel,
+          defaultUserLimitCleanupInterval: schema.organizationsTable.defaultUserLimitCleanupInterval,
+        })
+        .from(schema.organizationsTable)
+        .where(eq(schema.organizationsTable.id, organizationId))
+        .limit(1);
+
+      if (!organization?.defaultUserLimitValue) return null;
+
+      const customUserLimits = await LimitModel.findLimitsForValidation(
+        "user",
+        userId,
+        "token_cost",
+      );
+      if (customUserLimits.length > 0) return null;
+
+      const usage = await getDefaultUserLimitUsage({
+        organizationId,
+        userId,
+        models: normalizeLimitModels(organization.defaultUserLimitModel),
+        cleanupInterval: organization.defaultUserLimitCleanupInterval ?? "1w",
+      });
+
+      return {
+        isDefaultUserLimit: true,
+        limitType: "token_cost",
+        entityType: "user",
+        entityId: userId,
+        limitValue: organization.defaultUserLimitValue,
+        currentUsage: usage.cost,
+        remainingUsage: Math.max(0, organization.defaultUserLimitValue - usage.cost),
+        resetsAt: null,
+        models: normalizeLimitModels(organization.defaultUserLimitModel),
+      };
+    } catch (error) {
+      logger.error(`[LimitValidation] Error evaluating default user limit: ${error}`);
       return null;
     }
   }
@@ -1185,6 +1367,10 @@ function buildLimitViolationResponse(params: {
   limitDescription: "tokens" | "cost_dollars";
   totalTokensIn: number;
   totalTokensOut: number;
+  limitInfo?: {
+    lastCleanup: Date | null;
+    cleanupInterval: string | null;
+  };
 }): [string, string] {
   const totalTokens = params.totalTokensIn + params.totalTokensOut;
   const remaining = Math.max(0, params.limitValue - params.comparisonValue);
@@ -1195,6 +1381,38 @@ function buildLimitViolationResponse(params: {
 <archestra-limit-current-usage>${totalTokens}</archestra-limit-current-usage>
 <archestra-limit-value>${params.limitValue}</archestra-limit-value>
 <archestra-limit-remaining>${Math.max(0, params.limitValue - totalTokens)}</archestra-limit-remaining>`;
+
+  let waitString = "for limit resets";
+  if (params.limitInfo?.lastCleanup && params.limitInfo?.cleanupInterval) {
+    const last = params.limitInfo.lastCleanup.getTime();
+    let ms = 0;
+    switch (params.limitInfo.cleanupInterval) {
+      case "1h": ms = 60 * 60 * 1000; break;
+      case "12h": ms = 12 * 60 * 60 * 1000; break;
+      case "24h": ms = 24 * 60 * 60 * 1000; break;
+      case "1w": ms = 7 * 24 * 60 * 60 * 1000; break;
+      case "1m": ms = 30 * 24 * 60 * 60 * 1000; break;
+    }
+    if (ms) {
+      const nextReset = last + ms;
+      const now = Date.now();
+      if (nextReset <= now) {
+        waitString = "soon";
+      } else {
+        const diffMs = nextReset - now;
+        const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        if (diffDays > 0) waitString = `${diffDays}d`;
+        else {
+          const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+          if (diffHours > 0) waitString = `${diffHours}h`;
+          else {
+            const diffMins = Math.floor(diffMs / (60 * 1000));
+            waitString = `${diffMins}m`;
+          }
+        }
+      }
+    }
+  }
 
   const contentMessage =
     params.limitDescription === "cost_dollars"

@@ -4,6 +4,7 @@ import type { archestraApiTypes } from "@shared";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   Building2,
+  Clock,
   Edit,
   Key,
   Network,
@@ -156,6 +157,31 @@ function formatCurrencyWhole(value: number) {
 function formatNumericInput(value: string) {
   if (!value) return "";
   return Number(value).toLocaleString("en-US");
+}
+
+function getResetsInText(limit: LimitData) {
+  if (!limit.lastCleanup || !limit.cleanupInterval) return null;
+  const last = new Date(limit.lastCleanup as string).getTime();
+  let ms = 0;
+  switch (limit.cleanupInterval) {
+    case "1h": ms = 60 * 60 * 1000; break;
+    case "12h": ms = 12 * 60 * 60 * 1000; break;
+    case "24h": ms = 24 * 60 * 60 * 1000; break;
+    case "1w": ms = 7 * 24 * 60 * 60 * 1000; break;
+    case "1m": ms = 30 * 24 * 60 * 60 * 1000; break;
+  }
+  if (!ms) return null;
+  const nextReset = last + ms;
+  const now = Date.now();
+  if (nextReset <= now) return "soon";
+  
+  const diffMs = nextReset - now;
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays > 0) return `${diffDays}d`;
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (diffHours > 0) return `${diffHours}h`;
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  return `${diffMins}m`;
 }
 
 export default function LimitsPage() {
@@ -503,8 +529,27 @@ export default function LimitsPage() {
         minSize: 160,
         cell: ({ row }) => {
           const usage = getUsageStatus(row.original);
+          const resetsInText = getResetsInText(row.original);
           return (
             <div className="w-[180px]">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {`${formatCurrencyWhole(usage.actualUsage)} / ${formatCurrencyWhole(usage.actualLimit)}`}
+                </span>
+                {resetsInText && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-[10px] h-5 px-1 py-0 font-normal cursor-default flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {resetsInText}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Resets in {resetsInText}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
               <Progress
                 value={Math.min(usage.percentage, 100)}
                 className={
@@ -515,9 +560,6 @@ export default function LimitsPage() {
                       : undefined
                 }
               />
-              <p className="mt-1 text-left text-xs text-muted-foreground">
-                {`${formatCurrencyWhole(usage.actualUsage)} / ${formatCurrencyWhole(usage.actualLimit)} (${usage.percentage.toFixed(1)}%)`}
-              </p>
             </div>
           );
         },

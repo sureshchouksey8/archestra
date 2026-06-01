@@ -27,6 +27,17 @@ import { useTeams } from "@/lib/teams/team.query";
 import { type TeamToken, useTokens } from "@/lib/teams/team-token.query";
 import { formatRelativeTimeFromNow } from "@/lib/utils/date-time";
 import { TeamMembersDialog } from "./team-members-dialog";
+import { LimitUsageDisplay } from "@/components/limits/limit-usage-display";
+import {
+  LimitFormSection,
+  saveEntityLimit,
+  type LimitFormValues,
+} from "@/components/limits/limit-form-section";
+import {
+  useCreateLimit,
+  useUpdateLimit,
+  useDeleteLimit,
+} from "@/lib/limits.query";
 import { TokenManagerDialog } from "./token-manager-dialog";
 
 const TeamVaultFolderDialog = lazy(
@@ -74,18 +85,52 @@ export function TeamsList() {
 
   const { data: teams, isLoading } = useTeams();
 
+  const createLimit = useCreateLimit();
+  const updateLimit = useUpdateLimit();
+  const deleteLimit = useDeleteLimit();
+  const [limitValues, setLimitValues] = useState<LimitFormValues>({
+    enabled: false,
+    limitValue: "",
+    cleanupInterval: "24h",
+    isAllModels: true,
+    models: [],
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string }) => {
-      return await archestraApiSdk.createTeam({
+      const response = await archestraApiSdk.createTeam({
         body: data,
       });
+      if (response.error) {
+        throw new Error(
+          (response.error as any)?.error?.message || "Failed to create team",
+        );
+      }
+      return response.data;
     },
-    onSuccess: () => {
+    onSuccess: async (teamData) => {
+      if (teamData?.id) {
+        await saveEntityLimit({
+          entityId: teamData.id,
+          entityType: "team",
+          limitValues,
+          createLimit,
+          updateLimit,
+          deleteLimit,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       queryClient.invalidateQueries({ queryKey: ["tokens"] });
       setCreateDialogOpen(false);
       setTeamName("");
       setTeamDescription("");
+      setLimitValues({
+        enabled: false,
+        limitValue: "",
+        cleanupInterval: "24h",
+        isAllModels: true,
+        models: [],
+      });
       toast.success("Team created successfully");
     },
     onError: (error: Error) => {
@@ -142,7 +187,16 @@ export function TeamsList() {
     setActionButton(
       <PermissionButton
         permissions={{ team: ["create"] }}
-        onClick={() => setCreateDialogOpen(true)}
+        onClick={() => {
+          setLimitValues({
+            enabled: false,
+            limitValue: "",
+            cleanupInterval: "24h",
+            isAllModels: true,
+            models: [],
+          });
+          setCreateDialogOpen(true);
+        }}
       >
         <Plus className="h-4 w-4" />
         Create Team
@@ -184,6 +238,17 @@ export function TeamsList() {
           </div>
         );
       },
+    },
+    {
+      id: "usage",
+      header: "Usage",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <LimitUsageDisplay
+          entityType="team"
+          entityId={row.original.id}
+        />
+      ),
     },
     {
       id: "createdAt",
@@ -327,6 +392,12 @@ export function TeamsList() {
                 onChange={(e) => setTeamDescription(e.target.value)}
               />
             </div>
+
+            <LimitFormSection
+              values={limitValues}
+              onChange={setLimitValues}
+              entityTypeName="team"
+            />
           </div>
           <DialogStickyFooter>
             <Button

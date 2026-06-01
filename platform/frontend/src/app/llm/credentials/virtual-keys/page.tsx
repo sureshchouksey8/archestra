@@ -60,6 +60,18 @@ import {
   useUpdateVirtualApiKey,
 } from "@/lib/virtual-api-keys.query";
 import { useSetCredentialsAction } from "../layout";
+import { LimitUsageDisplay } from "@/components/limits/limit-usage-display";
+import {
+  LimitFormSection,
+  useEntityLimitFormState,
+  saveEntityLimit,
+  type LimitFormValues,
+} from "@/components/limits/limit-form-section";
+import {
+  useCreateLimit,
+  useUpdateLimit,
+  useDeleteLimit,
+} from "@/lib/limits.query";
 
 type VirtualKeyWithParent =
   archestraApiTypes.GetAllVirtualApiKeysResponses["200"]["data"][number];
@@ -154,6 +166,16 @@ export default function VirtualKeysPage() {
           <span className="text-sm text-muted-foreground">
             {formatProviderKeySummary(row.original.providerApiKeys)}
           </span>
+        ),
+      },
+      {
+        id: "usage",
+        header: "Usage",
+        cell: ({ row }) => (
+          <LimitUsageDisplay
+            entityType="virtual_key"
+            entityId={row.original.id}
+          />
         ),
       },
       {
@@ -348,6 +370,9 @@ function CreateVirtualKeyDialog({
   canReadTeams: boolean;
 }) {
   const createMutation = useCreateVirtualApiKey();
+  const createLimit = useCreateLimit();
+  const updateLimit = useUpdateLimit();
+  const deleteLimit = useDeleteLimit();
 
   const [newKeyName, setNewKeyName] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
@@ -362,6 +387,13 @@ function CreateVirtualKeyDialog({
   const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState<Date | null>(
     null,
   );
+  const [limitValues, setLimitValues] = useState<LimitFormValues>({
+    enabled: false,
+    limitValue: "",
+    cleanupInterval: "24h",
+    isAllModels: true,
+    models: [],
+  });
 
   const prevOpenRef = useRef(open);
 
@@ -376,6 +408,13 @@ function CreateVirtualKeyDialog({
       setScope(getDefaultVirtualKeyScope(visibilityOptions));
       setTeamIds([]);
       setProviderApiKeyIds({});
+      setLimitValues({
+        enabled: false,
+        limitValue: "",
+        cleanupInterval: "24h",
+        isAllModels: true,
+        models: [],
+      });
     }
   }, [open, defaultExpirationSeconds, visibilityOptions]);
 
@@ -393,6 +432,16 @@ function CreateVirtualKeyDialog({
           providerApiKeys,
         },
       });
+      if (result?.id) {
+        await saveEntityLimit({
+          entityId: result.id,
+          entityType: "virtual_key",
+          limitValues,
+          createLimit,
+          updateLimit,
+          deleteLimit,
+        });
+      }
       setNewKeyName("");
       if (result?.value) {
         setCreatedKeyValue(result.value);
@@ -408,6 +457,10 @@ function CreateVirtualKeyDialog({
     newKeyName,
     scope,
     teamIds,
+    limitValues,
+    createLimit,
+    updateLimit,
+    deleteLimit,
   ]);
 
   return (
@@ -484,6 +537,12 @@ function CreateVirtualKeyDialog({
                 onProviderApiKeyIdsChange={setProviderApiKeyIds}
                 providerApiKeys={parentableKeys}
               />
+
+              <LimitFormSection
+                values={limitValues}
+                onChange={setLimitValues}
+                entityTypeName="virtual key"
+              />
             </>
           )}
         </DialogBody>
@@ -535,6 +594,10 @@ function EditVirtualKeyDialog({
   canReadTeams: boolean;
 }) {
   const updateMutation = useUpdateVirtualApiKey();
+  const createLimit = useCreateLimit();
+  const updateLimit = useUpdateLimit();
+  const deleteLimit = useDeleteLimit();
+
   const [name, setName] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [scope, setScope] = useState<VirtualKeyScope>(
@@ -544,6 +607,15 @@ function EditVirtualKeyDialog({
   const [providerApiKeyIds, setProviderApiKeyIds] = useState<ProviderApiKeyMap>(
     {},
   );
+  const [limitValues, setLimitValues] = useState<LimitFormValues>({
+    enabled: false,
+    limitValue: "",
+    cleanupInterval: "24h",
+    isAllModels: true,
+    models: [],
+  });
+
+  useEntityLimitFormState("virtual_key", virtualKey?.id, setLimitValues);
 
   useEffect(() => {
     if (!open || !virtualKey) {
@@ -586,6 +658,14 @@ function EditVirtualKeyDialog({
       });
 
       if (result) {
+        await saveEntityLimit({
+          entityId: virtualKey.id,
+          entityType: "virtual_key",
+          limitValues,
+          createLimit,
+          updateLimit,
+          deleteLimit,
+        });
         onOpenChange(false);
       }
     } catch {
@@ -600,6 +680,10 @@ function EditVirtualKeyDialog({
     teamIds,
     updateMutation,
     virtualKey,
+    limitValues,
+    createLimit,
+    updateLimit,
+    deleteLimit,
   ]);
 
   if (!virtualKey) {
@@ -654,6 +738,12 @@ function EditVirtualKeyDialog({
             providerApiKeyIds={providerApiKeyIds}
             onProviderApiKeyIdsChange={setProviderApiKeyIds}
             providerApiKeys={providerApiKeys}
+          />
+
+          <LimitFormSection
+            values={limitValues}
+            onChange={setLimitValues}
+            entityTypeName="virtual key"
           />
         </DialogBody>
         <DialogStickyFooter className="mt-0">

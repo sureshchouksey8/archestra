@@ -482,6 +482,29 @@ export async function handleLLMProxy<
       `[${providerName}Proxy] Limit check passed`,
     );
 
+    const constrainingLimit = await LimitValidationService.getMostConstrainingLimit({
+      agentId: resolvedAgentId,
+      userId,
+      virtualKeyId,
+    });
+    
+    const limitHeaders: Record<string, string> = {};
+    if (constrainingLimit) {
+      if (constrainingLimit.models) {
+        limitHeaders["X-Archestra-Limit-Models"] = JSON.stringify(constrainingLimit.models);
+      }
+      limitHeaders["X-Archestra-Limit-Scope"] = constrainingLimit.entityType;
+      limitHeaders["X-Archestra-Limit-Value"] = constrainingLimit.limitValue.toString();
+      limitHeaders["X-Archestra-Limit-Remaining"] = constrainingLimit.remainingUsage.toString();
+      if (constrainingLimit.resetsAt) {
+        limitHeaders["X-Archestra-Limit-Resets-At"] = constrainingLimit.resetsAt.toISOString();
+      }
+    }
+    
+    if (!requestAdapter.isStreaming()) {
+      reply.headers(limitHeaders);
+    }
+
     // Persist tools declared by client (only for llm_proxy agents)
     if (resolvedAgent.agentType === "llm_proxy") {
       const tools = requestAdapter.getTools();
@@ -553,6 +576,7 @@ export async function handleLLMProxy<
         `[${providerName}Proxy] Preparing streaming response headers (lazy commit)`,
       );
       sseHeaders = streamAdapter.getSSEHeaders();
+      Object.assign(sseHeaders, limitHeaders);
     }
 
     // Helper to commit SSE headers before the first write.

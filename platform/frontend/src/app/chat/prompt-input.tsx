@@ -46,6 +46,63 @@ import {
   parseSkillCommand,
   type SkillCommand,
 } from "./skill-commands";
+import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+function formatCurrencyWhole(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function LimitProgressBar({
+  limitContext,
+}: {
+  limitContext: ArchestraPromptInputProps["limitContext"];
+}) {
+  if (!limitContext) return null;
+
+  const actualUsage = limitContext.limitValue - limitContext.remainingUsage;
+  const percentage = Math.min((actualUsage / limitContext.limitValue) * 100, 100);
+  const status =
+    percentage >= 90 ? "danger" : percentage >= 75 ? "warning" : "safe";
+
+  return (
+    <div className="absolute top-0 inset-x-0 -mt-1 px-4 z-10 opacity-70 hover:opacity-100 transition-opacity">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-full cursor-default py-1">
+            <Progress
+              value={percentage}
+              className={cn(
+                "h-1 rounded-sm",
+                status === "danger"
+                  ? "bg-red-100 [&>div]:bg-red-500"
+                  : status === "warning"
+                    ? "bg-orange-100 [&>div]:bg-orange-500"
+                    : undefined
+              )}
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">
+            Usage: {formatCurrencyWhole(actualUsage)} /{" "}
+            {formatCurrencyWhole(limitContext.limitValue)} ({percentage.toFixed(1)}%)
+            <br />
+            Scope: {limitContext.entityType}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
 
 const CHAT_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
 const CHAT_ATTACHMENT_MAX_MB = CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024);
@@ -70,6 +127,13 @@ export interface ArchestraPromptInputProps
   onCompactConversation?: () => Promise<void> | void;
   /** Whether Playwright setup overlay is visible (for showing Playwright install dialog) */
   isPlaywrightSetupVisible: boolean;
+  limitContext?: {
+    limitValue: number;
+    remainingUsage: number;
+    entityType: string;
+    models: string[] | null;
+    resetsAt: string | null;
+  } | null;
 }
 
 type SlashCommand = {
@@ -115,6 +179,7 @@ const PromptInputContent = ({
   onAgentChange,
   modelSource,
   onResetModelOverride,
+  limitContext,
 }: Omit<ArchestraPromptInputProps, "onSubmit"> & {
   onSubmit: ArchestraPromptInputProps["onSubmit"];
 }) => {
@@ -497,6 +562,7 @@ const PromptInputContent = ({
         maxFileSize={CHAT_ATTACHMENT_MAX_BYTES}
         onError={handleFileError}
       >
+        <LimitProgressBar limitContext={limitContext} />
         {/* File attachments display - shown inline above textarea */}
         <PromptInputAttachments className="px-3 pt-2 pb-0">
           {(attachment) => <PromptInputAttachment data={attachment} />}
@@ -599,6 +665,7 @@ const ArchestraPromptInput = ({
   onAgentChange,
   modelSource,
   onResetModelOverride,
+  limitContext,
 }: ArchestraPromptInputProps) => {
   const handleProviderFileError = useCallback(
     (err: {
@@ -650,6 +717,7 @@ const ArchestraPromptInput = ({
           onAgentChange={onAgentChange}
           modelSource={modelSource}
           onResetModelOverride={onResetModelOverride}
+          limitContext={limitContext}
         />
       </PromptInputProvider>
     </div>

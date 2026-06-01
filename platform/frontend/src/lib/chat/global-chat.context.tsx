@@ -136,6 +136,13 @@ interface ChatSession {
   contextTokensUsed: number | null;
   contextCompaction: ContextCompactionState;
   recordContextCompaction: (compaction: ContextCompactionRecord) => void;
+  limitContext: {
+    limitValue: number;
+    remainingUsage: number;
+    entityType: string;
+    models: string[] | null;
+    resetsAt: string | null;
+  } | null;
   /** Early UI data from data-tool-ui-start events (toolCallId → resource data incl. pre-fetched HTML) */
   earlyToolUiStarts: Record<
     string,
@@ -416,6 +423,38 @@ function ChatSessionHook({
       trigger: null,
       lastCompaction: null,
     });
+  const [limitContext, setLimitContext] = useState<ChatSession["limitContext"]>(null);
+
+  const lastToastThresholdRef = useRef<number>(0);
+  useEffect(() => {
+    if (!limitContext) return;
+    const actualUsage = limitContext.limitValue - limitContext.remainingUsage;
+    const percentage = limitContext.limitValue > 0 ? (actualUsage / limitContext.limitValue) * 100 : 0;
+
+    let currentThreshold = 0;
+    if (percentage >= 100) {
+      currentThreshold = 100;
+    } else if (percentage >= 90) {
+      currentThreshold = 90;
+    } else if (percentage >= 75) {
+      currentThreshold = 75;
+    }
+
+    if (currentThreshold !== lastToastThresholdRef.current) {
+      const scopeName = limitContext.entityType.charAt(0).toUpperCase() + limitContext.entityType.slice(1);
+      if (currentThreshold === 100) {
+        toast.error(`Limit Exceeded: You have used 100% of your ${scopeName} limit.`);
+      } else if (currentThreshold === 90) {
+        toast.warning(`Limit Warning: You have used ${percentage.toFixed(0)}% of your ${scopeName} limit.`, {
+          description: "Approaching hard limit. Please wait for a reset or request an upgrade.",
+        });
+      } else if (currentThreshold === 75) {
+        toast.warning(`Limit Warning: You have used ${percentage.toFixed(0)}% of your ${scopeName} limit.`);
+      }
+      lastToastThresholdRef.current = currentThreshold;
+    }
+  }, [limitContext]);
+
   const generateTitleMutation = useGenerateConversationTitle();
   // Track if title generation has been attempted for this conversation
   const titleGenerationAttemptedRef = useRef(false);
@@ -498,6 +537,23 @@ function ChatSessionHook({
 
     experimental_throttle: 100,
     id: conversationId,
+    onResponse: (response: Response) => {
+      const limitValueStr = response.headers.get("X-Archestra-Limit-Value");
+      const limitRemainingStr = response.headers.get("X-Archestra-Limit-Remaining");
+      const limitScopeStr = response.headers.get("X-Archestra-Limit-Scope");
+      const limitModelsStr = response.headers.get("X-Archestra-Limit-Models");
+      const limitResetsAtStr = response.headers.get("X-Archestra-Limit-Resets-At");
+
+      if (limitValueStr && limitRemainingStr && limitScopeStr) {
+        setLimitContext({
+          limitValue: parseFloat(limitValueStr),
+          remainingUsage: parseFloat(limitRemainingStr),
+          entityType: limitScopeStr,
+          models: limitModelsStr ? JSON.parse(limitModelsStr) : null,
+          resetsAt: limitResetsAtStr,
+        });
+      }
+    },
     onFinish: async ({ message, isAbort }) => {
       setOptimisticToolCalls([]);
       clearActiveContextCompaction();
@@ -835,6 +891,7 @@ function ChatSessionHook({
     contextTokensUsed,
     contextCompaction,
     recordContextCompaction,
+    limitContext,
     earlyToolUiStarts,
   };
 
@@ -861,6 +918,7 @@ function ChatSessionHook({
     contextTokensUsed,
     contextCompaction,
     recordContextCompaction,
+    limitContext,
     earlyToolUiStarts,
     sessionsRef,
     notifySessionUpdate,

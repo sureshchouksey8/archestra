@@ -38,6 +38,7 @@ import { getFrontendDocsUrl } from "@/lib/docs/docs";
 import { useDataTableQueryParams } from "@/lib/hooks/use-data-table-query-params";
 import { useTeams } from "@/lib/teams/team.query";
 import { LlmProxyActions } from "./llm-proxy-actions";
+import { LimitUsageDisplay } from "@/components/limits/limit-usage-display";
 
 type LlmProxiesInitialData = {
   agents: archestraApiTypes.GetAgentsResponses["200"] | null;
@@ -273,6 +274,16 @@ function LlmProxies({ initialData }: { initialData?: LlmProxiesInitialData }) {
           />
         );
       },
+    },
+    {
+      id: "usage",
+      header: "Usage",
+      cell: ({ row }) => (
+        <LimitUsageDisplay
+          entityType="agent"
+          entityId={row.original.id}
+        />
+      ),
     },
     ...(isAdmin
       ? [

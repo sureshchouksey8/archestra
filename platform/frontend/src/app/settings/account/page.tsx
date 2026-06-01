@@ -10,6 +10,7 @@ import { useSetSettingsAction } from "@/app/settings/layout";
 import { LoadingSpinner } from "@/components/loading";
 import { PersonalTokenCard } from "@/components/settings/personal-token-card";
 import { RolePermissionsCard } from "@/components/settings/role-permissions-card";
+import { UserLimitsCard } from "@/components/settings/user-limits-card";
 import { SettingsSectionStack } from "@/components/settings/settings-block";
 import { Button } from "@/components/ui/button";
 import { usePublicConfig } from "@/lib/config/config.query";
@@ -51,6 +52,7 @@ function AccountSettingsContent() {
     <>
       <SettingsSectionStack>
         <RolePermissionsCard />
+        <UserLimitsCard />
         <PersonalTokenCard />
         {organization?.showTwoFactor && (
           <TwoFactorCard classNames={{ base: "w-full" }} />

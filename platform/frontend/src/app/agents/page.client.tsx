@@ -43,6 +43,7 @@ import { useAppName } from "@/lib/hooks/use-app-name";
 import { useDataTableQueryParams } from "@/lib/hooks/use-data-table-query-params";
 import { useTeams } from "@/lib/teams/team.query";
 import { AgentActions } from "./agent-actions";
+import { LimitUsageDisplay } from "@/components/limits/limit-usage-display";
 
 type AgentsInitialData = {
   agents: archestraApiTypes.GetAgentsResponses["200"] | null;
@@ -398,6 +399,16 @@ function Agents({ initialData }: { initialData?: AgentsInitialData }) {
         ).length;
         return <div>{subagentsCount}</div>;
       },
+    },
+    {
+      id: "usage",
+      header: "Usage",
+      cell: ({ row }) => (
+        <LimitUsageDisplay
+          entityType="agent"
+          entityId={row.original.id}
+        />
+      ),
     },
     ...(isAgentAdmin
       ? [

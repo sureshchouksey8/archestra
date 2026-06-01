@@ -2231,6 +2231,7 @@ export function ChatPageContent({
                           onResetModelOverride={
                             handleConversationResetModelOverride
                           }
+                          limitContext={chatSession?.limitContext}
                         />
                         <div className="text-center">
                           <Version inline />

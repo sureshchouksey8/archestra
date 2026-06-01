@@ -140,6 +140,17 @@ import { useAvailableLlmProviderApiKeys } from "@/lib/llm-provider-api-keys.quer
 import { useTeams } from "@/lib/teams/team.query";
 import { cn } from "@/lib/utils";
 import {
+  LimitFormSection,
+  useEntityLimitFormState,
+  saveEntityLimit,
+  type LimitFormValues,
+} from "@/components/limits/limit-form-section";
+import {
+  useCreateLimit,
+  useUpdateLimit,
+  useDeleteLimit,
+} from "@/lib/limits.query";
+import {
   getDescriptionPlaceholder,
   getNamePlaceholder,
   normalizeSuggestedPrompts,
@@ -665,6 +676,19 @@ export function AgentDialog({
     useState<ToolExposureMode>("full");
   const [isSaving, setIsSaving] = useState(false);
 
+  const createLimit = useCreateLimit();
+  const updateLimit = useUpdateLimit();
+  const deleteLimit = useDeleteLimit();
+  const [limitValues, setLimitValues] = useState<LimitFormValues>({
+    enabled: false,
+    limitValue: "",
+    cleanupInterval: "24h",
+    isAllModels: true,
+    models: [],
+  });
+
+  useEntityLimitFormState("agent", agent?.id, setLimitValues);
+
   // Determine type-specific visibility based on agentType prop
   const isInternalAgent = agentType === "agent";
   const isBuiltIn = !!agent?.builtIn;
@@ -776,6 +800,13 @@ export function AgentDialog({
         setToolExposureMode("full");
         setAutoConfigureOnToolDiscovery(false);
         setDualLlmMaxRounds("5");
+        setLimitValues({
+          enabled: false,
+          limitValue: "",
+          cleanupInterval: "24h",
+          isAllModels: true,
+          models: [],
+        });
       }
       // Reset counts when dialog opens
       setSelectedToolsCount(0);
@@ -1082,6 +1113,17 @@ export function AgentDialog({
         });
       }
 
+      if (savedAgentId && !isBuiltIn) {
+        await saveEntityLimit({
+          entityId: savedAgentId,
+          entityType: "agent",
+          limitValues,
+          createLimit,
+          updateLimit,
+          deleteLimit,
+        });
+      }
+
       // Close dialog on success
       onOpenChange(false);
     } catch (_error) {
@@ -1129,6 +1171,10 @@ export function AgentDialog({
     supportsAutomaticToolAssignment,
     deleteAgent,
     toolExposureMode,
+    limitValues,
+    createLimit,
+    updateLimit,
+    deleteLimit,
   ]);
 
   const handleClose = useCallback(() => {
@@ -1883,6 +1929,14 @@ export function AgentDialog({
                         </>
                       )}
                     </div>
+                  )}
+
+                  {!isBuiltIn && (
+                    <LimitFormSection
+                      values={limitValues}
+                      onChange={setLimitValues}
+                      entityTypeName={agentType === "llm_proxy" ? "LLM proxy" : "agent"}
+                    />
                   )}
                 </div>
               )}

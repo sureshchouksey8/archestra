@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { Label } from "@/components/ui/label";
 import { DialogBody, DialogStickyFooter } from "@/components/ui/dialog";
 import { PermissionButton } from "@/components/ui/permission-button";
 import { RoleSelect } from "@/components/ui/role-select";
@@ -56,6 +57,18 @@ import {
 import { useRoles } from "@/lib/role.query";
 import { cn } from "@/lib/utils";
 import { useSetSettingsAction } from "../layout";
+import { LimitUsageDisplay } from "@/components/limits/limit-usage-display";
+import {
+  LimitFormSection,
+  useEntityLimitFormState,
+  saveEntityLimit,
+  type LimitFormValues,
+} from "@/components/limits/limit-form-section";
+import {
+  useCreateLimit,
+  useUpdateLimit,
+  useDeleteLimit,
+} from "@/lib/limits.query";
 
 export default function UsersPageClient() {
   return (
@@ -213,6 +226,9 @@ function MembersTab({
   });
 
   const updateMemberRole = useUpdateMemberRole();
+  const createLimit = useCreateLimit();
+  const updateLimit = useUpdateLimit();
+  const deleteLimit = useDeleteLimit();
   const removeMember = useRemoveMember();
   const { data: signupStatus } = useMemberSignupStatus();
   const pendingSignupMembers = signupStatus?.pendingSignupMembers ?? [];
@@ -312,6 +328,22 @@ function MembersTab({
           {row.original.role}
         </Badge>
       ),
+    },
+    {
+      id: "usage",
+      header: "Usage",
+      cell: ({ row }) => {
+        const member = row.original;
+        if ("provider" in member) {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        return (
+          <LimitUsageDisplay
+            entityType="user"
+            entityId={member.userId}
+          />
+        );
+      },
     },
     {
       id: "joined",
@@ -449,16 +481,25 @@ function MembersTab({
         />
       </LoadingWrapper>
 
-      {/* Change Role Dialog */}
       {changingRole && (
         <ChangeRoleDialog
           member={changingRole.member}
           open={!!changingRole}
           onOpenChange={(open) => !open && setChangingRole(null)}
-          onConfirm={async (newRole) => {
-            await updateMemberRole.mutateAsync({
-              memberId: changingRole.member.id,
-              role: newRole,
+          onConfirm={async (newRole, limitValues) => {
+            if (newRole !== changingRole.member.role) {
+              await updateMemberRole.mutateAsync({
+                memberId: changingRole.member.id,
+                role: newRole,
+              });
+            }
+            await saveEntityLimit({
+              entityId: changingRole.member.userId,
+              entityType: "user",
+              limitValues,
+              createLimit,
+              updateLimit,
+              deleteLimit,
             });
             setChangingRole(null);
           }}
@@ -546,10 +587,19 @@ function ChangeRoleDialog({
   member: Member;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (role: string) => void;
+  onConfirm: (role: string, limitValues: LimitFormValues) => void;
   isPending: boolean;
 }) {
   const [selectedRole, setSelectedRole] = useState(member.role);
+  const [limitValues, setLimitValues] = useState<LimitFormValues>({
+    enabled: false,
+    limitValue: "",
+    cleanupInterval: "24h",
+    isAllModels: true,
+    models: [],
+  });
+
+  useEntityLimitFormState("user", member.userId, setLimitValues);
 
   useEffect(() => {
     setSelectedRole(member.role);
@@ -559,22 +609,30 @@ function ChangeRoleDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Change Role"
+      title="Edit User & Role"
       description={
         <>
-          Update the role for{" "}
+          Update settings for{" "}
           <span className="font-medium text-foreground">
             {member.name || member.email}
           </span>
         </>
       }
-      size="small"
+      size="medium"
     >
       <DialogBody className="space-y-4">
-        <RoleSelect
-          value={selectedRole}
-          onValueChange={setSelectedRole}
-          className="w-full"
+        <div className="space-y-2">
+          <Label>Role</Label>
+          <RoleSelect
+            value={selectedRole}
+            onValueChange={setSelectedRole}
+            className="w-full"
+          />
+        </div>
+        <LimitFormSection
+          values={limitValues}
+          onChange={setLimitValues}
+          entityTypeName="user"
         />
       </DialogBody>
       <DialogStickyFooter>
@@ -582,10 +640,10 @@ function ChangeRoleDialog({
           Cancel
         </Button>
         <Button
-          onClick={() => onConfirm(selectedRole)}
-          disabled={isPending || selectedRole === member.role}
+          onClick={() => onConfirm(selectedRole, limitValues)}
+          disabled={isPending}
         >
-          {isPending ? "Updating..." : "Update Role"}
+          {isPending ? "Saving..." : "Save Changes"}
         </Button>
       </DialogStickyFooter>
     </FormDialog>
