@@ -22,9 +22,77 @@ import {
   useDeleteConnectorDocument,
 } from "@/lib/knowledge/kb-document.query";
 import { formatDate } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+
 
 type PaginationMeta =
   archestraApiTypes.GetConnectorDocumentsResponses["200"]["pagination"];
+
+
+const EMBEDDING_ERROR_MAP: Record<string, string> = {
+  rate_limit: "Rate limits",
+  api_key_error: "API key errors (401, 403 etc)",
+  model_not_found: "Model configured, but not found",
+  api_server_error: "API server error (50x Errors)",
+  dimensions_mismatch: "Dimensions mismatch",
+  unknown_error: "Unknown failure",
+};
+
+export function DocumentStatusBadge({
+  status,
+  error,
+}: {
+  status: string;
+  error?: string | null;
+}) {
+  if (status === "completed") {
+    return (
+      <Badge variant="secondary" className="bg-green-500/10 text-green-600 border border-green-500/30">
+        Success
+      </Badge>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <Badge variant="secondary" className="text-muted-foreground">
+        Pending
+      </Badge>
+    );
+  }
+  if (status === "processing") {
+    return (
+      <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 border border-blue-500/30">
+        <span className="mr-1.5 h-2 w-2 rounded-full bg-current animate-pulse" />
+        Processing
+      </Badge>
+    );
+  }
+  if (status === "failed") {
+    const badge = (
+      <Badge variant="secondary" className="bg-red-500/10 text-red-600 border border-red-500/30">
+        Failed
+      </Badge>
+    );
+    if (!error) return badge;
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger type="button" className="cursor-help" onClick={(e) => e.stopPropagation()}>{badge}</TooltipTrigger>
+          <TooltipContent>
+            {EMBEDDING_ERROR_MAP[error] || error}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  return <Badge variant="secondary">{status}</Badge>;
+}
 
 const DEFAULT_DOCUMENT_PAGE_SIZE = 10;
 const MAX_PREVIEW_CHARS = 20_000;
@@ -96,6 +164,17 @@ export function ConnectorDocumentsTable({
               {row.original.title}
             </button>
           </div>
+        ),
+      },
+      {
+        id: "status",
+        accessorKey: "embeddingStatus",
+        header: "Status",
+        cell: ({ row }) => (
+          <DocumentStatusBadge 
+            status={row.original.embeddingStatus as string} 
+            error={(row.original as any).embeddingError as string | null} 
+          />
         ),
       },
       {

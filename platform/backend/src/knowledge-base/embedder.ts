@@ -17,6 +17,28 @@ import {
   type EmbeddingConfig,
   getDefaultOrgEmbeddingConfig,
 } from "./kb-llm-client";
+import type { EmbeddingError } from "@/types/kb-document";
+import { AzureEmbeddingError, GeminiEmbeddingError, OpenAIEmbeddingError } from "./embedding-clients";
+
+export function determineEmbeddingError(error: unknown): EmbeddingError {
+  if (
+    error instanceof AzureEmbeddingError ||
+    error instanceof GeminiEmbeddingError ||
+    error instanceof OpenAIEmbeddingError
+  ) {
+    if (error.status === 429) return "rate_limit";
+    if (error.status === 401 || error.status === 403) return "api_key_error";
+    if (error.status === 404) return "model_not_found";
+    if (error.status >= 500) return "api_server_error";
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("dimension") || msg.includes("vector")) {
+      return "dimensions_mismatch";
+    }
+  }
+  return "unknown_error";
+}
 
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1000;
@@ -91,6 +113,7 @@ class EmbeddingService {
     } catch (error) {
       await KbDocumentModel.update(documentId, {
         embeddingStatus: "failed",
+        embeddingError: determineEmbeddingError(error),
       });
       logger.error(
         {
@@ -194,7 +217,7 @@ class EmbeddingService {
 
     const ctx = orgConfig.config;
     const embeddingResults = new Map<string, number[]>();
-    const failedChunkIds = new Set<string>();
+    const failedChunkIds = new Map<string, unknown>();
 
     for (let i = 0; i < allChunks.length; i += EMBEDDING_BATCH_SIZE) {
       const batch = allChunks.slice(i, i + EMBEDDING_BATCH_SIZE);
@@ -222,7 +245,7 @@ class EmbeddingService {
           "[Embedder] Batch embedding API call failed",
         );
         for (const chunk of batch) {
-          failedChunkIds.add(chunk.chunkId);
+          failedChunkIds.set(chunk.chunkId, error);
         }
       }
     }
@@ -231,23 +254,44 @@ class EmbeddingService {
     const successfulUpdates = [...embeddingResults.entries()].map(
       ([chunkId, embedding]) => ({ chunkId, embedding }),
     );
+    let dbError: unknown = null;
     if (successfulUpdates.length > 0) {
-      await KbChunkModel.updateEmbeddings(successfulUpdates, ctx.dimensions);
+      try {
+        await KbChunkModel.updateEmbeddings(successfulUpdates, ctx.dimensions);
+      } catch (error) {
+        dbError = error;
+        logger.error(
+          { runId: connectorRunId, error: error instanceof Error ? error.message : String(error) },
+          "[Embedder] Failed to update embeddings in DB",
+        );
+      }
     }
 
     for (const { documentId, chunkIds, chunkCount } of docChunkMap) {
-      const anyFailed = chunkIds.some((id) => failedChunkIds.has(id));
-      if (anyFailed) {
+      let docError: unknown = dbError;
+      if (!docError) {
+        chunkIds.some((id) => {
+          if (failedChunkIds.has(id)) {
+            docError = failedChunkIds.get(id);
+            return true;
+          }
+          return false;
+        });
+      }
+
+      if (docError !== null) {
         await KbDocumentModel.update(documentId, {
           embeddingStatus: "failed",
+          embeddingError: determineEmbeddingError(docError),
         });
         logger.error(
           { documentId, runId: connectorRunId },
-          "[Embedder] Failed to embed document (batch failure)",
+          "[Embedder] Failed to embed document (batch or DB failure)",
         );
       } else {
         await KbDocumentModel.update(documentId, {
           embeddingStatus: "completed",
+          embeddingError: null,
           chunkCount,
         });
         logger.info(
